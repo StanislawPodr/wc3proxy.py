@@ -1,79 +1,128 @@
-# Warcraft III LAN Discovery Proxy
+# Warcraft III LAN Discovery Proxy (wc3ts Architecture)
 
-A lightweight and efficient Python tool that enables players to discover and join Local Area Network (LAN) games in classic **Warcraft III** over Virtual Private Networks (VPNs) like **Tailscale**, **ZeroTier**, **Hamachi**, etc. on Linux.
+A lightweight and efficient Python tool that enables players to discover and join Local Area Network (LAN) games in classic **Warcraft III** over Virtual Private Networks (VPNs) like **Tailscale**, **ZeroTier**, **Hamachi**, etc.
+
+This script is fully cross-platform and works on **Windows**, **Linux**, and **macOS**.
 
 ---
 
 ## 🛠️ How It Works (Under the Hood)
 
-Classic Warcraft III relies on UDP broadcast packets on port **6112** to announce and find active game lobbies in a local area network. Layer 3 (IP) virtual private networks (such as Tailscale) do not forward broadcast or multicast packets between connected peers by default.
-
-This script bridges that gap using the following mechanism:
-
-1. **Sniffing Local Requests:** Using the `scapy` library, the script sniffs your physical network interface (e.g. `eno1` or your Wi-Fi interface) to capture outgoing LAN discovery packets broadcasted by your local Warcraft III client (`W3GS_SEARCHGAME` - `0x2f` or `LanRefreshGame` - `0x32`).
-2. **Tunneling the Request:** The intercepted packet (which contains your exact game client version and checksums) is cloned and forwarded directly (via UDP Unicast) to the remote host's IP address (`host_ip`) over the VPN.
-3. **Receiving Details:** The remote host's Warcraft III instance receives the discovery query and replies with a unicast game details packet (`LanGameDetails` - `0x30`).
-4. **L2 Broadcast Injection (Spoofing):** The script receives the reply and crafts a spoofed Layer 2 Ethernet broadcast frame containing the response, setting the source IP of the frame to the remote host's IP. Your local Warcraft III client receives this broadcast, parses the details, and displays the game in the LAN menu. When you click "Join", the game client initiates a direct TCP connection to the host's IP, which is natively routed and handled by your VPN tunnel.
+1. **The LAN Discovery Problem:** Warcraft III uses UDP broadcast packets on port `6112` to advertise lobbies. Virtual Private Networks (such as Tailscale) operate at Layer 3 and do not route broadcast/multicast packets between peers by default. Thus, remote hosts cannot see each other's games.
+2. **Local Sniffing & Tunneling:** 
+   - The script sniffs your active physical network interface (e.g. Wi-Fi or Ethernet) for outgoing UDP LAN discovery requests (`0x2f` or `0x32`) sent by your local Warcraft III client.
+   - It captures these packets and tunnels them directly (via UDP unicast) to the remote host's VPN IP.
+3. **The Same-IP Join Prevention:**
+   - The host replies with game details (`0x30` - `LanGameDetails`).
+   - If we broadcast this reply back as-is on the local machine, Warcraft III will see the game hosted on port `6112` of the local machine. The game client prevents joining if the advertised port and IP collide with its own bound listener (thinking you are trying to connect to yourself), yielding the *"unable to join game"* error.
+   - Additionally, Wi-Fi driver limitations and mobile hotspot isolation often block Layer 2 broadcasts from looping back to local sockets.
+4. **The `wc3ts` Solution (Port Redirection & TCP Proxy):**
+   - The script runs a **TCP Proxy** on a free local port (default: `6115`).
+   - When the UDP reply is received from the host, the script modifies the payload by rewriting the game port (replacing `6112` with our proxy port `6115`).
+   - The modified payload is broadcast to the local LAN (`255.255.255.255:6112`) exactly once (preventing duplicate game listings).
+   - Your local Warcraft III client receives the packet, sees a game on port `6115`, and allows joining since it doesn't collide with its own port (`6112`).
+   - When you click **Join**, the client connects to port `6115` TCP. Our proxy intercepts the connection and tunnels all TCP game traffic directly to your friend's VPN IP on port `6112`.
 
 ---
 
 ## 📋 Prerequisites
 
-* Operating System: **Linux**
-* **Python 3** installed
-* Administrator privileges (`sudo`) – required to sniff raw network interfaces and inject custom Layer 2 Ethernet frames.
+- **Python 3**
+- **Npcap** (Windows only) - required for packet sniffing.
+- **Administrator / Root privileges** - required to sniff raw packets on physical interfaces.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Installation & Setup
 
-1. **Install requirements** (using a virtual environment is highly recommended):
+### 🪟 Windows (Step-by-Step Guide)
+
+#### Step 1: Install Python
+1. Download the latest installer from the official [Python Downloads Page](https://www.python.org/downloads/).
+2. Run the downloaded installer.
+3. **CRITICAL:** Check the box at the bottom that says **"Add python.exe to PATH"** before clicking **Install Now**. If you skip this, the command prompt will not recognize the `python` command.
+
+#### Step 2: Install Npcap
+1. Download the installer from the [Npcap Download Page](https://npcap.com/#download).
+2. Run the installer.
+3. **CRITICAL:** Ensure the option **"Install Npcap in WinPcap API-compatible mode"** is checked. If it is unchecked, Scapy will not be able to capture packets.
+
+#### Step 3: Run the Proxy
+1. Save `app.py` to a folder on your computer (e.g. `C:\wc3proxy`).
+2. Click the **Start Menu**, type `cmd`, right-click on **Command Prompt**, and select **Run as administrator**.
+3. In the Command Prompt, navigate to your folder:
+   ```cmd
+   cd C:\wc3proxy
+   ```
+4. Install the required dependency (`scapy`):
+   ```cmd
+   pip install scapy
+   ```
+5. Start the proxy by specifying your friend's VPN IP address (e.g., if their Tailscale IP is `100.69.6.29`):
+   ```cmd
+   python app.py 100.69.6.29
+   ```
+
+---
+
+### 🐧 Linux (Debian / Ubuntu / Arch / etc.)
+
+1. Open a terminal.
+2. Create a virtual environment and install Scapy:
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
    pip install scapy
    ```
-
-2. **Run the proxy** by specifying your friend's VPN IP address:
+3. Run the proxy with `sudo` (required to sniff raw packets):
    ```bash
    sudo .venv/bin/python app.py <FRIEND_VPN_IP>
    ```
 
-3. **Launch Warcraft III** and navigate to the **Local Area Network (LAN)** menu. Your friend's hosted lobby should appear in the list within a few seconds.
+---
+
+### 🍏 macOS
+
+1. Open a terminal.
+2. Install Scapy (requires Python 3; if not present, install it via Homebrew or from Python.org):
+   ```bash
+   sudo pip3 install scapy
+   ```
+3. Run the proxy with `sudo`:
+   ```bash
+   sudo python3 app.py <FRIEND_VPN_IP>
+   ```
 
 ---
 
-## ⚙️ CLI Usage and Options
+## 🎮 Play Instructions
+
+1. **Host the Game:** Have your friend create a LAN game lobby in Warcraft III on their remote computer and stay in the lobby.
+2. **Start the Proxy:** Run this proxy on your computer, passing your friend's VPN IP as the argument.
+3. **Join the Game:** On your computer, open Warcraft III, go to **Local Area Network (LAN)**, and you should see exactly one game hosted on the list. Double-click to join and play!
+
+---
+
+## ⚙️ CLI Options & Configuration
 
 ```bash
-usage: app.py [-h] [-i INTERFACE] [-l LOCAL_IP] [-p PORT] host_ip
+usage: app.py [-h] [-i INTERFACE] [-l LOCAL_IP] [-p PORT] [--proxy-port PROXY_PORT] host_ip
 ```
 
 | Argument | Shortcut | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `host_ip` | — | *required* | IP address of the remote Warcraft III host (VPN IP). |
-| `--interface` | `-i` | `auto` | Name of your physical network interface (e.g. `eno1`, `wlan0`). Using `auto` will automatically detect the default active interface. |
-| `--local-ip` | `-l` | `0.0.0.0` | Your local IP address on the VPN interface. If set to `0.0.0.0`, the OS routing table will automatically determine the outgoing interface and source IP. |
+| `--interface` | `-i` | `auto` | Network interface (e.g. `eno1`, `wlan0`). `auto` automatically detects your active interface. |
+| `--local-ip` | `-l` | `0.0.0.0` | Local IP on the VPN interface (used to bind outgoing requests). |
 | `--port` | `-p` | `6112` | Warcraft III game port. |
-
-### Usage Examples:
-
-* **Basic launch (Tailscale/ZeroTier):**
-  ```bash
-  sudo .venv/bin/python app.py 100.69.6.29
-  ```
-
-* **Specifying a Wi-Fi interface and local VPN interface binding:**
-  ```bash
-  sudo .venv/bin/python app.py 100.69.6.29 -i wlxd037454ed072 -l 100.103.35.62
-  ```
+| `--proxy-port` | — | `6115` | Local TCP port for the proxy. |
 
 ---
 
 ## 🔍 W3GS Protocol Reference
 
-The script intercepts and parses the following opcodes from the Blizzard LAN Game Protocol (W3GS):
-* `0xf7` – Protocol magic byte.
+The script intercepts and modifies the following opcodes from the Blizzard LAN Game Protocol (W3GS):
+* `0xf7` – Protocol signature byte.
 * `0x2f` (`LanRequestGame`) – Discovery request broadcasted by a searching client.
 * `0x32` (`LanRefreshGame`) – Discovery refresh request broadcasted by a client.
 * `0x30` (`LanGameDetails`) – Response sent by the host containing game lobby details (game name, slots, map name, TCP port).
