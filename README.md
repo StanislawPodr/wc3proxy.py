@@ -126,3 +126,6 @@ The script intercepts and modifies the following opcodes from the Blizzard LAN G
 * `0x2f` (`LanRequestGame`) – Discovery request broadcasted by a searching client.
 * `0x32` (`LanRefreshGame`) – Discovery refresh request broadcasted by a client.
 * `0x30` (`LanGameDetails`) – Response sent by the host containing game lobby details (game name, slots, map name, TCP port).
+
+## Note
+This is mostly AI generated. Use if you find it useful. The code is probably inspired by https://github.com/kradalby/wc3ts Copyright (c) 2025, Kristoffer Dalby. Chat didn't know how to make it work so I asked it to analyse his repo, thx. Should work everywhere. Tested on Ubuntu 24.04 LTS
