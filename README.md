@@ -1,29 +1,8 @@
 # Warcraft III LAN Discovery Proxy (wc3ts Architecture)
 
-A lightweight and efficient Python tool that enables players to discover and join Local Area Network (LAN) games in classic **Warcraft III** over Virtual Private Networks (VPNs) like **Tailscale**, **ZeroTier**, **Hamachi**, etc.
+A lightweight and efficient Python tool that enables players to discover and join Local Area Network (LAN) games in classic **Warcraft III** (legacy) over Virtual Private Networks (VPNs) like **Tailscale**, **ZeroTier**, **Hamachi**, etc.
 
 This script is fully cross-platform and works on **Windows**, **Linux**, and **macOS**.
-
----
-
-## 🛠️ How It Works (Under the Hood)
-
-1. **The LAN Discovery Problem:** Warcraft III uses UDP broadcast packets on port `6112` to advertise lobbies. Virtual Private Networks (such as Tailscale) operate at Layer 3 and do not route broadcast/multicast packets between peers by default. Thus, remote hosts cannot see each other's games.
-2. **Local Sniffing & Tunneling:** 
-   - The script sniffs your active physical network interface (e.g. Wi-Fi or Ethernet) for outgoing UDP LAN discovery requests (`0x2f` or `0x32`) sent by your local Warcraft III client.
-   - It captures these packets and tunnels them directly (via UDP unicast) to the remote host's VPN IP.
-3. **The Same-IP Join Prevention:**
-   - The host replies with game details (`0x30` - `LanGameDetails`).
-   - If we broadcast this reply back as-is on the local machine, Warcraft III will see the game hosted on port `6112` of the local machine. The game client prevents joining if the advertised port and IP collide with its own bound listener (thinking you are trying to connect to yourself), yielding the *"unable to join game"* error.
-   - Additionally, Wi-Fi driver limitations and mobile hotspot isolation often block Layer 2 broadcasts from looping back to local sockets.
-4. **The `wc3ts` Solution (Port Redirection & TCP Proxy):**
-   - The script runs a **TCP Proxy** on a free local port (default: `6115`).
-   - When the UDP reply is received from the host, the script modifies the payload by rewriting the game port (replacing `6112` with our proxy port `6115`).
-   - The modified payload is broadcast to the local LAN (`255.255.255.255:6112`) exactly once (preventing duplicate game listings).
-   - Your local Warcraft III client receives the packet, sees a game on port `6115`, and allows joining since it doesn't collide with its own port (`6112`).
-   - When you click **Join**, the client connects to port `6115` TCP. Our proxy intercepts the connection and tunnels all TCP game traffic directly to your friend's VPN IP on port `6112`.
-
----
 
 ## 📋 Prerequisites
 
@@ -72,7 +51,7 @@ This script is fully cross-platform and works on **Windows**, **Linux**, and **m
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   pip install scapy
+   pip install -r requirements.txt
    ```
 3. Run the proxy with `sudo` (required to sniff raw packets):
    ```bash
@@ -86,7 +65,7 @@ This script is fully cross-platform and works on **Windows**, **Linux**, and **m
 1. Open a terminal.
 2. Install Scapy (requires Python 3; if not present, install it via Homebrew or from Python.org):
    ```bash
-   sudo pip3 install scapy
+   sudo pip3 install -r requirements.txt
    ```
 3. Run the proxy with `sudo`:
    ```bash
@@ -128,4 +107,4 @@ The script intercepts and modifies the following opcodes from the Blizzard LAN G
 * `0x30` (`LanGameDetails`) – Response sent by the host containing game lobby details (game name, slots, map name, TCP port).
 
 ## Note
-This is mostly AI generated. Use if you find it useful. The code is probably inspired by https://github.com/kradalby/wc3ts Copyright (c) 2025, Kristoffer Dalby. Chat didn't know how to make it work so I asked it to analyse his repo, thx. Should work everywhere. Tested on Ubuntu 24.04 LTS
+This is mostly AI generated. Use if you find it useful. The code is probably inspired by https://github.com/kradalby/wc3ts Copyright (c) 2025, Kristoffer Dalby. Chat didn't know how to make it work so I asked it to analyse his repo, thx. Should work everywhere. Tested on Ubuntu 24.04 LTS, fedora and win11.
