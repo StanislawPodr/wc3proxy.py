@@ -65,7 +65,7 @@ def handle_packet(packet, local_ip, host_ip, port, interface, proxy_port):
                     data, addr = sock.recvfrom(2048)
                     
                     if data and len(data) > 2 and data[0] == 0xf7 and data[1] == 0x30:
-                        print(f"[+] Received game details from {addr[0]}. Modifying port to {proxy_port} and broadcasting...")
+                        print(f"[+] Received game details from {addr[0]}. Modifying port to {proxy_port}...")
                         
                         # Copy data to bytearray to modify it
                         data_list = bytearray(data)
@@ -76,14 +76,12 @@ def handle_packet(packet, local_ip, host_ip, port, interface, proxy_port):
                             data_list[port_idx] = proxy_port & 0xff
                             data_list[port_idx+1] = (proxy_port >> 8) & 0xff
                         
-                        # Send standard UDP broadcast to 255.255.255.255:6112.
-                        # Only send once to broadcast to prevent WC3 from showing duplicate games.
+                        # Send game details to local 
                         try:
-                            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as bsock:
-                                bsock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                                bsock.sendto(data_list, ("255.255.255.255", port))
+                            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as usock:
+                                usock.sendto(data_list, (local_ip, port))
                         except Exception as e:
-                            print(f"[-] Error broadcasting game details: {e}")
+                            print(f"[-] Error sending game details: {e}")
     except socket.timeout:
         # Ignore timeouts silently as they are expected when host has no active game lobby
         pass
